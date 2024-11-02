@@ -39,6 +39,7 @@ void CMuHelper::Start()
     }
 
     m_bActive = true;
+    iComboState = 0;
     m_iCurrentTarget = -1;
     m_timerThread = std::thread(&CMuHelper::WorkLoop, this);
 
@@ -59,7 +60,7 @@ void CMuHelper::WorkLoop()
 {
     while (m_bActive) {
         Work();
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
 
@@ -72,10 +73,62 @@ void CMuHelper::Work()
         m_queuedTargets.pop_front();
         m_setTargets.erase(m_iCurrentTarget);
 
+        // TODO: Maybe not good to go back to basic skill when switching target. Just remove
+        iComboState = 0;
+
         g_ConsoleDebug->Write(MCD_NORMAL, L"m_queuedTargets.front() %d", m_iCurrentTarget);
     }
 
-    SimulateAttack(m_config.iBasicSkill);
+    // TODO: what is ExtState 1 and animation 6
+    // TODO: what is animation 122 and 129??
+    // TODO: self buff / party buff
+    // TODO: Return to Spot
+
+    if (m_config.bUseCombo && 
+        //Hero->Object.ExtState == 1 && TODO: ExtState is always 0
+        Hero->Object.m_iAnimation !=6)
+    {
+
+        g_ConsoleDebug->Write(MCD_NORMAL, L"Hero Animation ID %d", Hero->Object.m_iAnimation);
+        if (Hero->Object.m_iAnimation > 14 && (Hero->Object.m_iAnimation < 122 || Hero->Object.m_iAnimation > 129))
+        {
+            return;
+        }
+
+        if (iComboState == 1)
+        {
+            //if (pHelperUseSkill(pHelper, pHelper->SkillSecond1.SkillSecondID, pHelper->lpIDontKnow, 1))
+            if (SimulateAttack(m_config.iSkill2))
+            {
+                ++iComboState;
+                g_ConsoleDebug->Write(MCD_NORMAL, L"Combo: Skill2...");
+                return;
+            }
+        }
+        else if (iComboState == 2 && SimulateAttack(m_config.iSkill3))
+        {
+            iComboState = 0;
+            g_ConsoleDebug->Write(MCD_NORMAL, L"Combo: Skill3...");
+            return;
+        }
+    }
+
+    if (m_config.bUseCombo)
+    {
+        if 
+        (
+                //TODO: probably need check skill 2 / 3 time delay setting before casting
+                m_config.iBasicSkill && 
+                m_config.iSkill2 && 
+                m_config.iSkill3 &&
+                SimulateAttack(m_config.iBasicSkill)
+        )
+        {
+            iComboState = 1;
+            g_ConsoleDebug->Write(MCD_NORMAL, L"Combo: Basic Skill...");
+        }
+    }
+
 }
 
 void CMuHelper::DeleteTarget(int iTargetId)
@@ -107,7 +160,7 @@ void CMuHelper::AddTarget(int iTargetId)
     g_ConsoleDebug->Write(MCD_NORMAL, L"[MU Helper] Added target -> %d", iTargetId);
 }
 
-void CMuHelper::SimulateAttack(int iSkill)
+int CMuHelper::SimulateAttack(int iSkill)
 {
     extern MovementSkill g_MovementSkill;
     extern int SelectedCharacter;
@@ -115,21 +168,21 @@ void CMuHelper::SimulateAttack(int iSkill)
 
     if (m_iCurrentTarget == -1)
     {
-        return;
+        return 0;
     }
 
     SelectedCharacter = FindCharacterIndex(m_iCurrentTarget);
     if (SelectedCharacter == MAX_CHARACTERS_CLIENT)
     {
         DeleteTarget(m_iCurrentTarget);
-        return;
+        return 0;
     }
 
     CHARACTER* pTarget = &CharactersClient[SelectedCharacter];
     if (pTarget->Dead)
     {
         DeleteTarget(m_iCurrentTarget);
-        return;
+        return 0;
     }
 
     int iSkillIndex = g_pSkillList->GetSkillIndex(iSkill);
@@ -142,5 +195,5 @@ void CMuHelper::SimulateAttack(int iSkill)
     TargetX = (int)(pTarget->Object.Position[0] / TERRAIN_SCALE);
     TargetY = (int)(pTarget->Object.Position[1] / TERRAIN_SCALE);
 
-    ExecuteAttack(Hero);
+    return ExecuteAttack(Hero);
 }

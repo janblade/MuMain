@@ -79,7 +79,7 @@ public:
 
 	void AddTarget(int iTargetId);
 	void DeleteTarget(int iTargetId);
-	void SimulateAttack(int iSkill);
+	int SimulateAttack(int iSkill);
 
 private:
 	void WorkLoop();
@@ -92,6 +92,7 @@ private:
 	std::deque<int> m_queuedTargets;
 	std::unordered_set<int> m_setTargets;
 	int m_iCurrentTarget;
+	int iComboState;
 };
 
 extern CMuHelper g_MuHelper;
